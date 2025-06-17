@@ -1,0 +1,1 @@
+from .managerPanel import ManagerPanelWindow
