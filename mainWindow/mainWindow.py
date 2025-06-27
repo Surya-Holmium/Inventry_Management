@@ -137,7 +137,7 @@ class LoginWindow(QMainWindow):
                 json={"user": self.username_input.text(), "pass": self.password_input.text()}
             )
             data = response.json()
-            # print("Login response:", data)  # 👈 Debugging
+            print("Login response:", data)  # 👈 Debugging
 
             role = data.get("role")
             if role == "Admin":

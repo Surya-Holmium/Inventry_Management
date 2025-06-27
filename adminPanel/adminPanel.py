@@ -1,7 +1,7 @@
 from PyQt6.QtWidgets import (
     QApplication, QLabel, QWidget, QLineEdit, QPushButton,
     QMainWindow, QVBoxLayout, QHBoxLayout, QMessageBox, QToolBar, QTableWidget,
-    QTableWidgetItem, QStatusBar
+    QTableWidgetItem, QStatusBar, QSizePolicy
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
@@ -14,6 +14,8 @@ import functools
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from .manageUsers import ManageUsersWindow
 from .addStocks import AddStocksWindow
+from .editStock import EditStockWindow
+# from 
 SERVER_URL = "http://localhost:5000"
 
 
@@ -23,7 +25,6 @@ class AdminPanelWindow(QMainWindow):
         self.setWindowTitle("Inventory Management - Admin Panel")
         self.setMinimumSize(900, 700)
 
-
         self.statusbar = self.statusBar()
 
         self.manage_users = QAction("Manage Users", self)
@@ -32,7 +33,7 @@ class AdminPanelWindow(QMainWindow):
         self.manage_users.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
 
-        self.add_stocks = QAction("Add Stock", self)
+        self.add_stocks = QAction("Create New Stock", self)
         self.add_stocks.triggered.connect(self.add_stocks_dialog)
         self.add_stocks.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
         self.add_stocks.hovered.connect(lambda: QApplication.restoreOverrideCursor())
@@ -42,7 +43,7 @@ class AdminPanelWindow(QMainWindow):
         self.view_inventory.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
         self.view_inventory.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
-        self.issue_stock = QAction("Issue Stock", self)
+        self.issue_stock = QAction("Outbound Stock", self)
         self.issue_stock.triggered.connect(self.issue_stock_dialog)
         self.issue_stock.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
         self.issue_stock.hovered.connect(lambda: QApplication.restoreOverrideCursor())
@@ -86,51 +87,82 @@ class AdminPanelWindow(QMainWindow):
         manageUsers.exec()
 
     def add_stocks_dialog(self):
-        addStocks = AddStocksWindow()
+        addStocks = AddStocksWindow(self.view_inventory_as_table)
         addStocks.setStyleSheet("background-color: #add8e6;")
         addStocks.exec()
         
     def edit_stock_dialog(self):
-        pass
-    def delete_stock_dialog(self):
-        pass
+        index = self.table.currentRow()
+        item_id = self.table.item(index, 0).text()
+        quntity = self.table.item(index, 4).text()
+        unit_price = self.table.item(index, 5).text()
+        supplier = self.table.item(index, 6).text()
+        editStock = EditStockWindow(item_id, quntity, unit_price, supplier, self.view_inventory_as_table)
+        editStock.setStyleSheet("background-color: #add8e6;")
+        editStock.exec()
+
+    def delete_stock_item(self):
+        index = self.table.currentRow()
+        item_id = self.table.item(index, 1).text()
+        response = requests.delete(f"{SERVER_URL}/delete_item/{item_id}")
+        if response.ok:
+            self.view_inventory_as_table()
+
     def view_inventory_as_table(self):
-        response = requests.get(f"{SERVER_URL}/view_in")
+        response = requests.get(f"{SERVER_URL}/view_inventory")
         data = response.json()
 
-        # Custom display headers
         display_headers = [
-            "Item_ID", "Item_Name", "Category", "Description", "Quantity",
+            "S. No.", "Item_ID", "Item_Name", "Category", "Description", "Quantity",
             "Unit_price", "Supplier", "Location", "Min_Stock", "Unit",
             "Created_At", "Updated_At"
         ]
-
-        # Corresponding JSON keys
         data_keys = [
             "id", "item_name", "category", "description", "quantity",
             "unit_price", "supplier", "location", "min_stock", "unit",
             "created_at", "updated_at"
         ]
 
-        self.table = QTableWidget()
-        self.table.setColumnCount(len(display_headers))
-        self.table.setHorizontalHeaderLabels(display_headers)
-        self.table.setStyleSheet('font-size: 14px; background-color: white')
-        # self.table.setFixedSize(1000, 600)
-        self.table.setRowCount(len(data))
-        self.table.verticalHeader().setVisible(False)
-        # self.table.setAutoScroll(True).
-        self.setCentralWidget(self.table)
+        table = QTableWidget()
+        table.setColumnCount(len(display_headers))
+        table.setHorizontalHeaderLabels(display_headers)
+        table.setRowCount(len(data))
+        table.verticalHeader().setVisible(False)
 
-        #Detecting a cell click
-        self.table.cellClicked.connect(self.getCellValue)
+        table.setStyleSheet("""
+            QTableWidget {
+                font-size: 15px;
+                background-color: white;
+            }
+            QHeaderView::section {
+                background-color: #E0E0E0;
+                font-size: 16px;
+                font-weight: bold;
+                padding: 6px;
+            }
+        """)
+
+        table.resizeColumnsToContents()
+        for col in range(table.columnCount()):
+            table.setColumnWidth(col, table.columnWidth(col) + 50)
 
         for row_index, row_data in enumerate(data):
+            table.setRowHeight(row_index, 40)
+            # Add S. No. manually
+            table.setItem(row_index, 0, QTableWidgetItem(str(row_index + 1)))
             for col_index, key in enumerate(data_keys):
                 value = row_data.get(key, "")
-                display_value = "" if value is None else str(value)
-                self.table.setItem(row_index, col_index, QTableWidgetItem(display_value))
+                table.setItem(row_index, col_index + 1, QTableWidgetItem(str(value)))
 
+        self.table = table
+        self.table.cellClicked.connect(self.getCellValue)
+
+        container_widget = QWidget()
+        container_layout = QVBoxLayout(container_widget)
+        container_layout.setContentsMargins(50, 30, 50, 20)
+        container_layout.addWidget(table)
+
+        self.setCentralWidget(container_widget)
 
     def issue_stock_dialog(self):
         pass
@@ -143,19 +175,19 @@ class AdminPanelWindow(QMainWindow):
 
     def getCellValue(self):
         # Create actions
-        self.edit_stock = QAction("Edit Stock", self)
+        self.edit_stock = QAction("Inbound Stock", self)
         self.edit_stock.triggered.connect(self.edit_stock_dialog)
         self.edit_stock.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
         self.edit_stock.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
         self.delete_stock = QAction("Delete Stock", self)
-        self.delete_stock.triggered.connect(self.delete_stock_dialog)
+        self.delete_stock.triggered.connect(self.delete_stock_item)
         self.delete_stock.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
         self.delete_stock.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
         # Remove existing instances from the toolbar (if present)
         for action in self.toolbar.actions():
-            if action.text() in ["Edit Stock", "Delete Stock"]:
+            if action.text() in ["Inbound Stock", "Delete Stock"]:
                 self.toolbar.removeAction(action)
 
         # Add fresh actions

@@ -49,6 +49,7 @@ SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
 class Authentication(Base):
     __tablename__ = "Authentication"
     user_id = Column(Integer, primary_key=True, index=True)
@@ -58,9 +59,11 @@ class Authentication(Base):
     role = Column(String, nullable=False)
     status = Column(String, nullable=False)
 
+
 class InventoryItems(Base):
     __tablename__ = "Inventory"
-    item_id = Column(Integer, primary_key=True, index=True)
+    index = Column(Integer, primary_key=True, index=True)
+    item_id = Column(String, unique=True, nullable=False)
     item_name = Column(String, nullable=False)
     category = Column(String, nullable=False)
     description = Column(String, nullable=False)
@@ -72,6 +75,16 @@ class InventoryItems(Base):
     unit = Column(String, nullable=False)
     created_at = Column(DateTime, nullable=False)
     updated_at = Column(DateTime, nullable=False)
+
+
+class ComboBoxOptions(Base):
+    __tablename__ = "ComboBoxOptions"
+    option_id = Column(Integer, primary_key=True, index=True)
+    category = Column(String, nullable=True)
+    location = Column(String, nullable=True)
+    supplier = Column(String, nullable=True)
+    unit = Column(String, nullable=True)
+
 
 def get_db():
     db = SessionLocal()
@@ -94,6 +107,7 @@ def init_db():
         ))
     if not db.query(InventoryItems).first():
         db.add(InventoryItems(
+            item_id = "SKU0001",
             item_name = "Motor Controller",
             category = "Electronics",
             description = "24V DC 30A motor controller",
@@ -105,6 +119,14 @@ def init_db():
             unit = "pcs",
             created_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
+
+    if not db.query(ComboBoxOptions).first():
+        db.add(ComboBoxOptions(
+            category = "Electronics",
+            location = "Rack A",
+            supplier = "ABC Components Pvt. Ltd.",
+            unit = "pcs"
         ))
     db.commit()
     db.close()
