@@ -112,7 +112,7 @@ async def add_stock(request: Request, db: Session = Depends(get_db)):
         print(e)
 
 @app.put("/update_value/{item_id}")
-async def update_value(item_id: int, request: Request, db: Session = Depends(get_db)):
+async def update_value(item_id: str, request: Request, db: Session = Depends(get_db)):
     try:
         data = await request.json()
 

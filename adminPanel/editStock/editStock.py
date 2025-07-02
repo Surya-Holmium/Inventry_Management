@@ -8,7 +8,7 @@ import os
 import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-SERVER_URL = "http://localhost:5000"
+SERVER_URL = "http://13.200.108.197:5000"
 
 class EditStockWindow(QDialog):
     def __init__(self, item_id, quantity, unit_price, supplier, on_update):

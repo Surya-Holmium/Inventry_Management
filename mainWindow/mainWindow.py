@@ -15,7 +15,7 @@ from managerPanel import ManagerPanelWindow
 from storeOperatorPanel import StoreOperatorPanelWindow
 from viewerPanel import ViewerPanelWindow
 
-SERVER_URL = "http://localhost:5000"
+SERVER_URL = "http://13.200.108.197:5000"
 executor = ThreadPoolExecutor()
 
 class LoginWindow(QMainWindow):

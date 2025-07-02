@@ -1,23 +1,18 @@
 from PyQt6.QtWidgets import (
-    QApplication, QLabel, QWidget, QLineEdit, QPushButton,
-    QMainWindow, QVBoxLayout, QHBoxLayout, QMessageBox, QToolBar, QTableWidget,
-    QTableWidgetItem, QStatusBar, QSizePolicy
+    QApplication, QWidget, QMainWindow, QVBoxLayout, QToolBar, QTableWidget, QTableWidgetItem, QMessageBox, QPushButton
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
 import sys
 import os
 import requests
-from concurrent.futures import ThreadPoolExecutor
-import functools
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from .manageUsers import ManageUsersWindow
 from .addStocks import AddStocksWindow
 from .editStock import EditStockWindow
 # from 
-SERVER_URL = "http://localhost:5000"
-
+SERVER_URL = "http://13.200.108.197:5000"
 
 class AdminPanelWindow(QMainWindow):
     def __init__(self):
@@ -93,10 +88,10 @@ class AdminPanelWindow(QMainWindow):
         
     def edit_stock_dialog(self):
         index = self.table.currentRow()
-        item_id = self.table.item(index, 0).text()
-        quntity = self.table.item(index, 4).text()
-        unit_price = self.table.item(index, 5).text()
-        supplier = self.table.item(index, 6).text()
+        item_id = self.table.item(index, 1).text()
+        quntity = self.table.item(index, 5).text()
+        unit_price = self.table.item(index, 6).text()
+        supplier = self.table.item(index, 7).text()
         editStock = EditStockWindow(item_id, quntity, unit_price, supplier, self.view_inventory_as_table)
         editStock.setStyleSheet("background-color: #add8e6;")
         editStock.exec()
@@ -111,7 +106,6 @@ class AdminPanelWindow(QMainWindow):
     def view_inventory_as_table(self):
         response = requests.get(f"{SERVER_URL}/view_inventory")
         data = response.json()
-
         display_headers = [
             "S. No.", "Item_ID", "Item_Name", "Category", "Description", "Quantity",
             "Unit_price", "Supplier", "Location", "Min_Stock", "Unit",
@@ -144,7 +138,7 @@ class AdminPanelWindow(QMainWindow):
 
         table.resizeColumnsToContents()
         for col in range(table.columnCount()):
-            table.setColumnWidth(col, table.columnWidth(col) + 50)
+            table.setColumnWidth(col, table.columnWidth(col) + 30)
 
         for row_index, row_data in enumerate(data):
             table.setRowHeight(row_index, 40)
@@ -153,6 +147,8 @@ class AdminPanelWindow(QMainWindow):
             for col_index, key in enumerate(data_keys):
                 value = row_data.get(key, "")
                 table.setItem(row_index, col_index + 1, QTableWidgetItem(str(value)))
+            if(row_data["quantity"] <= 10):
+                self.show_warning(f"{row_data["item_name"]} stock is minimum amount. Please add more stock")
 
         self.table = table
         self.table.cellClicked.connect(self.getCellValue)
@@ -163,6 +159,13 @@ class AdminPanelWindow(QMainWindow):
         container_layout.addWidget(table)
 
         self.setCentralWidget(container_widget)
+
+    def show_warning(self, text):
+        msg_box = HandPointerMessageBox()
+        msg_box.setWindowTitle("Warning")
+        msg_box.setText(text)
+        msg_box.setIcon(QMessageBox.Icon.Warning)
+        msg_box.exec()
 
     def issue_stock_dialog(self):
         pass
@@ -194,6 +197,12 @@ class AdminPanelWindow(QMainWindow):
         self.toolbar.addAction(self.edit_stock)
         self.toolbar.addAction(self.delete_stock)
 
+class HandPointerMessageBox(QMessageBox):
+    def showEvent(self, event):
+        super().showEvent(event)
+        for button in self.buttons():
+            if isinstance(button, QPushButton):
+                button.setCursor(Qt.CursorShape.PointingHandCursor)
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = AdminPanelWindow()
