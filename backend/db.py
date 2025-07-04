@@ -52,7 +52,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 class Authentication(Base):
     __tablename__ = "Authentication"
-    user_id = Column(Integer, primary_key=True, index=True)
+    index = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String, unique=True, nullable=False)
     user_name = Column(String, nullable=False)
     email = Column(String, unique=True, nullable=False)
     password = Column(String, unique=True, nullable=False)
@@ -86,6 +87,18 @@ class ComboBoxOptions(Base):
     unit = Column(String, nullable=True)
 
 
+class TransactionsLogs(Base):
+    __tablename__ = "TransactionsLogs"
+    index = Column(Integer, primary_key=True, index=True)
+    transaction_id = Column(String, unique=True, nullable=False)
+    item_id = Column(String, nullable=False)
+    transaction_type = Column(String, nullable=False)
+    quantity = Column(Integer, nullable=False)
+    issued_by = Column(String, nullable=False)
+    issued_to = Column(String, nullable=False)
+    issued_at = Column(DateTime, nullable=False)
+
+
 def get_db():
     db = SessionLocal()
     try:
@@ -99,6 +112,7 @@ def init_db():
     db = SessionLocal()
     if not db.query(Authentication).first():
         db.add(Authentication(
+            user_id ="E0001",
             user_name="Surya",
             email="dev2.holmium@gmail.com",
             password=pwd_context.hash("sUrya@839"),
@@ -127,6 +141,17 @@ def init_db():
             location = "Rack A",
             supplier = "ABC Components Pvt. Ltd.",
             unit = "pcs"
+        ))
+
+    if not db.query(TransactionsLogs).first():
+        db.add(TransactionsLogs(
+            transaction_id = "TL0001",
+            item_id = "SKU0001",
+            transaction_type = "Issuance",
+            quantity = 1,
+            issued_by = "Surya",
+            issued_to = "Fayaz",
+            issued_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ))
     db.commit()
     db.close()

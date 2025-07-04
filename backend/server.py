@@ -9,7 +9,7 @@ from datetime import datetime
 import uvicorn
 from passlib.context import CryptContext
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from backend import get_db, Authentication, InventoryItems, ComboBoxOptions
+from backend import get_db, Authentication, InventoryItems, ComboBoxOptions, TransactionsLogs
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
@@ -90,7 +90,7 @@ async def add_user(request: Request, db: Session = Depends(get_db)):
 async def add_stock(request: Request, db: Session = Depends(get_db)):
     try:
         data = await request.json()
-        item_id = generate_next_item_id(db)
+        item_id = generate_next_id("new_item",db)
         db.add(InventoryItems(
             item_id = item_id,
             item_name=data["itemName"],
@@ -103,7 +103,7 @@ async def add_stock(request: Request, db: Session = Depends(get_db)):
             min_stock=data["minStock"],
             unit=data["unit"],
             created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ))
         db.commit()
         db.close()
@@ -128,6 +128,7 @@ async def update_value(item_id: str, request: Request, db: Session = Depends(get
         item.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         db.commit()
+        db.close()
         return {"msg": "Item updated successfully"}
 
     except Exception as e:
@@ -159,7 +160,7 @@ async def view_options(oType: str, db: Session = Depends(get_db)):
 
     except Exception as e:
         print("Error in view_options:", e)
-        return []
+        raise HTTPException(status_code=400, detail="Invalid column name")
     
 @app.post("/options/{oType}")
 async def add_options(oType: str, request: Request, db: Session = Depends(get_db)):
@@ -189,16 +190,79 @@ async def add_options(oType: str, request: Request, db: Session = Depends(get_db
         print("Error in add_options:", e)
         return []
 
-# ----------------------------------------------Helper function--------------------------------------------
-def generate_next_item_id(db:Session):
-    latest_item = (db.query(InventoryItems).order_by(InventoryItems.index.desc()).first())
+@app.get("/{itemOrEmpl}")
+async def view_itemOrEmpl(itemOrEmpl: str, db: Session = Depends(get_db)):
+    try:
+        if itemOrEmpl == "item_name":
+            results = db.query(getattr(InventoryItems, itemOrEmpl)).distinct().all()
+        elif itemOrEmpl == "issued_by" or itemOrEmpl == "issued_to":
+            results = db.query(getattr(Authentication, "user_name")).distinct().all()
+        
+        return [value[0] for value in results if value[0] is not None]
 
-    if not latest_item:
-        return "SKU0001"
-    
-    last_num = int(latest_item.item_id[3:])
-    next_num = last_num + 1
-    return f"SKU{next_num:04d}"
+    except Exception as e:
+        print("Error in view_itemOrEmpl:", e)
+        raise HTTPException(status_code=400, detail="Invalid column name")
+
+@app.post("/issue_stock")
+async def issue_stock(request: Request, db: Session=Depends(get_db)):
+    try:
+        data = await request.json()
+        print(data)
+        trans_id = generate_next_id("new_trans", db)
+        is_item_name = db.query(InventoryItems).filter(InventoryItems.item_name == data["itemName"]).first()
+
+        if not is_item_name:
+            raise HTTPException(status_code=400, detail="Invalid column name")
+        
+        is_item_name.quantity = is_item_name.quantity - data.get("quantity", is_item_name.quantity)
+
+        db.add(TransactionsLogs(
+            transaction_id= trans_id,
+            item_id=is_item_name.item_id,
+            transaction_type="Issuance",
+            quantity=data["quantity"],
+            issued_by=data["issued_by"],
+            issued_to=data["issued_to"],
+            issued_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ))
+
+        db.commit()
+        db.close()
+    except Exception as e:
+        print("Error in issue_stock:", e)
+        raise HTTPException(status_code=400, detail="Invalid column name")
+
+
+# ----------------------------------------------Helper function--------------------------------------------
+def generate_next_id(creation_type, db:Session):
+    if creation_type == "new_item":
+        latest_item = (db.query(InventoryItems).order_by(InventoryItems.index.desc()).first())
+
+        if not latest_item:
+            return "SKU0001"
+        
+        last_num = int(latest_item.item_id[3:])
+        next_num = last_num + 1
+        return f"SKU{next_num:04d}"
+    elif creation_type == "new_user":
+        latest_user = (db.query(Authentication).order_by(Authentication.index.desc()).first())
+
+        if not latest_user:
+            return "E0001"
+        
+        last_num = int(latest_user.user_id[3:])
+        next_num = last_num + 1
+        return f"E{next_num:04d}"
+    elif creation_type == "new_trans":
+        latest_trans = (db.query(TransactionsLogs).order_by(TransactionsLogs.index.desc()).first())
+
+        if not latest_trans:
+            return "TL0001"
+        
+        last_num = int(latest_trans.transaction_id[3:])
+        next_num = last_num + 1
+        return f"TL{next_num:04d}"
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=5000)

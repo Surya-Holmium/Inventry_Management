@@ -1,1 +1,1 @@
-from .db import get_db, Authentication, InventoryItems, ComboBoxOptions
+from .db import get_db, Authentication, InventoryItems, ComboBoxOptions, TransactionsLogs

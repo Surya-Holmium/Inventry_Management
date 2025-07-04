@@ -11,6 +11,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from .manageUsers import ManageUsersWindow
 from .addStocks import AddStocksWindow
 from .editStock import EditStockWindow
+from .issueStocks import IssueStocksWindow
 # from 
 SERVER_URL = "http://13.200.108.197:5000"
 
@@ -168,7 +169,10 @@ class AdminPanelWindow(QMainWindow):
         msg_box.exec()
 
     def issue_stock_dialog(self):
-        pass
+        issueStocks = IssueStocksWindow(self.view_inventory_as_table)
+        issueStocks.setStyleSheet("background-color: #add8e6;")
+        issueStocks.exec()
+        
     def manage_request_dialog(self):
         pass
     def download_report(self):
