@@ -8,13 +8,13 @@ import os
 import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-SERVER_URL = "http://13.200.108.197:5000"
+SERVER_URL = "http://192.168.0.17:5000"
 
 class EditStockWindow(QDialog):
-    def __init__(self, item_id, quantity, unit_price, supplier, on_update):
+    def __init__(self, item_id, itemName, unit_price, supplier, on_update):
         super().__init__()
         self.item_id = item_id
-        self.quantity = quantity
+        self.itemName = itemName
         self.unit_price = unit_price
         self.supplier = supplier
         self.on_update = on_update
@@ -22,48 +22,19 @@ class EditStockWindow(QDialog):
         self.setWindowTitle("Inventory Management")
         # self.setContentsMargins(200, 100, 200, 100)
 
-        outer_layout = QVBoxLayout()
-        outer_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        # Outer layout: centers the inner form layout horizontally and vertically
+        self.outer_layout = QVBoxLayout()
+        self.outer_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        inner_widget = QWidget()
-        inner_widget.setFixedSize(650, 600)  # Increased size to accommodate larger input
+        # Create a widget to hold the form layout
+        form_widget = QWidget()
+        form_layout = QVBoxLayout(form_widget)
+        form_layout.setSpacing(20)
+        form_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        form_layout = QVBoxLayout()
-        form_layout.setSpacing(25)
-
-        self.Quantity_label = QLabel("Quantity:")
-        self.Quantity_label.setStyleSheet("font-size: 20px")
-        self.quantity_input = QLineEdit()
-        self.quantity_input.setText(str(self.quantity))
-        self.quantity_input.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.quantity_input.setPlaceholderText("Enter Quantity")
-        self.quantity_input.setStyleSheet(
-            "QLineEdit { background-color: white; border: 2px solid gray; border-radius: 14px; padding: 0 8px; }"
-        )
-        self.quantity_input.setFixedSize(300, 40)  # <-- updated size
-
-        quantity_row = QHBoxLayout()
-        quantity_row.setSpacing(10)
-        quantity_row.addWidget(self.Quantity_label)
-        quantity_row.addWidget(self.quantity_input)
-        form_layout.addLayout(quantity_row)
-
-        self.unitprice_label = QLabel("Unit Price:")
-        self.unitprice_label.setStyleSheet("font-size: 20px")
-        self.unitprice_input = QLineEdit()
-        self.unitprice_input.setText(str(self.unit_price))
-        self.unitprice_input.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.unitprice_input.setPlaceholderText("Enter Unit Price")
-        self.unitprice_input.setStyleSheet(
-            "QLineEdit { background-color: white; border: 2px solid gray; border-radius: 14px; padding: 0 8px; }"
-        )
-        self.unitprice_input.setFixedSize(300, 40)  # <-- updated size
-
-        unitprice_row = QHBoxLayout()
-        unitprice_row.setSpacing(10)
-        unitprice_row.addWidget(self.unitprice_label)
-        unitprice_row.addWidget(self.unitprice_input)
-        form_layout.addLayout(unitprice_row)
+        self.itemname_input = self.create_input_row(form_layout, "Item Name:", self.itemName)
+        self.quantity_input = self.create_input_row(form_layout, "Quantity:", value=None)
+        self.unitprice_input = self.create_input_row(form_layout, "Unit Price:", self.unit_price)
 
         self.supplier_label = QLabel("Supplier:")
         self.supplier_label.setStyleSheet("font-size: 20px")
@@ -82,8 +53,6 @@ class EditStockWindow(QDialog):
         supplier_row.addWidget(self.supplier_input)
         form_layout.addLayout(supplier_row)
 
-        self.Quantity_label.setFixedWidth(100)
-        self.unitprice_label.setFixedWidth(100)
         self.supplier_label.setFixedWidth(100)
 
         # Buttons
@@ -108,10 +77,37 @@ class EditStockWindow(QDialog):
         button_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         form_layout.addLayout(button_row)
 
-        inner_widget.setLayout(form_layout)
-        outer_layout.addWidget(inner_widget)
+        # Add vertical spacers to center vertically
+        self.outer_layout.addStretch()
+        self.outer_layout.addWidget(form_widget, alignment=Qt.AlignmentFlag.AlignCenter)
+        self.outer_layout.addStretch()
 
-        self.setLayout(outer_layout)
+        self.setLayout(self.outer_layout)
+
+    def create_input_row(self, layout, label_text, value):
+        label = QLabel(label_text)
+        label.setFixedWidth(100)
+        label.setStyleSheet("font-size: 18px")
+
+        input_field = QLineEdit()
+        input_field.setFixedSize(300, 40)
+        input_field.setStyleSheet("QLineEdit { background-color: white; border: 2px solid gray; border-radius: 14px; padding: 0 8px; }")
+
+        if(label_text == "Item Name:"):
+            input_field.setText(value)
+        elif(label_text == "Quantity:"):
+            input_field.setPlaceholderText("Enter quantity")
+        elif(label_text == "Unit Price:"):
+            input_field.setText(value)
+
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        row.addWidget(label)
+        row.addWidget(input_field)
+        row.addStretch()
+        layout.addLayout(row)
+
+        return input_field
 
     def handle_update(self):
         if not self.quantity_input.text():

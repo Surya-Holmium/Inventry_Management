@@ -1,26 +1,55 @@
 from fastapi import FastAPI, Request, Depends, HTTPException
-from sqlalchemy.orm import Session, load_only
+from sqlalchemy.orm import Session
 from sqlalchemy import inspect
 from contextlib import asynccontextmanager
+from tasks import send_email_background
 import uvicorn
-import sys
-import os
+import sys, os, functools, json
+from dotenv import load_dotenv
 from datetime import datetime
 import uvicorn
+import redis.asyncio as redis
 from passlib.context import CryptContext
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from backend import get_db, Authentication, InventoryItems, ComboBoxOptions, TransactionsLogs
 
+load_dotenv()
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
+
+# ---------- app startup / shutdown --------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     print("🚀 FastAPI Server Starting...")
+    app.state.redis = redis.from_url(
+        f"redis://{os.getenv('REDIS_HOST')}:{os.getenv('REDIS_PORT')}/2",
+        encoding="utf-8",
+        decode_responses=True
+    )
     yield
     print("🛑 FastAPI Server Shutting Down Gracefully...")
 
 app = FastAPI(lifespan=lifespan)
 
+
+# ---------- tiny Redis‑cache decorator ----------------------------
+def redis_cache(ttl: int = 5):
+    def deco(fn):
+        @functools.wraps(fn)
+        async def wrapper(*args, **kw):
+            req: Request = kw.get("request")
+            redis = req.app.state.redis          # set in lifespan()
+            key   = f"{fn.__name__}:{args}:{kw}"
+            if data := await redis.get(key):
+                return json.loads(data)
+            result = await fn(*args, **kw)
+            await redis.set(key, json.dumps(result), ex=ttl)
+            return result
+        return wrapper
+    return deco
+
+# -------------------- Auth ----------------------------------------
 @app.post("/login")
 async def handle_login(request: Request, db: Session = Depends(get_db)):
     try:
@@ -35,30 +64,20 @@ async def handle_login(request: Request, db: Session = Depends(get_db)):
     except AttributeError as e:
         print(e)
 
-@app.get("/view_inventory")
-async def view_inventory(db: Session = Depends(get_db)):
-    try:
-        result = []
-        view_items = db.query(InventoryItems).all()
-        # return {"id": view_item.item_id, "item_name":view_item.item_name,}
-        for view_item in view_items:
-            result.append({"id": view_item.item_id, "item_name":view_item.item_name, "category": view_item.category, "description": view_item.description, "quantity": view_item.quantity, "unit_price": view_item.unit_price, "supplier": view_item.supplier, "location": view_item.location, "min_stock": view_item.min_stock, "unit": view_item.unit, "created_at": view_item.created_at, "updated_at": view_item.updated_at})
-        return result
-
-    except Exception as e:
-        print(e)
-
+# -------------------- Users ---------------------------------------
 @app.get("/view_user")
-async def view_users(db: Session = Depends(get_db)):
+@redis_cache(ttl=10)  
+async def view_users(request: Request, db: Session = Depends(get_db)):
     try:
         result = []
-        view_items = db.query(Authentication).all()
-        for view_item in view_items:
+        view_users = db.query(Authentication).all()
+        for view_user in view_users:
             result.append({
-                "uName": view_item.user_name, 
-                "uEmail":view_item.email, 
-                "uRole": view_item.role, 
-                "sts": view_item.status
+                "user_id": view_user.user_id,
+                "uName": view_user.user_name, 
+                "uEmail":view_user.email, 
+                "uRole": view_user.role, 
+                "sts": view_user.status
             })
         return result
 
@@ -69,8 +88,10 @@ async def view_users(db: Session = Depends(get_db)):
 async def add_user(request: Request, db: Session = Depends(get_db)):
     try:
         data = await request.json()
-        print(data)
+        # print(data)
+        user_id = generate_next_id("new_user", db)
         db.add(Authentication(
+            user_id = user_id,
             user_name= data["uName"],
             email= data["uEmail"],
             password=pwd_context.hash(data["uPwd"]),
@@ -82,9 +103,75 @@ async def add_user(request: Request, db: Session = Depends(get_db)):
         checkDB = db.query(Authentication).filter(Authentication.user_name == data["uName"]).first()
         if checkDB:
             print(checkDB.user_name)
+            send_email_background.delay(data["uName"], data["uEmail"], data["uPwd"])
             return {"msg": True}
     except Exception as e:
         print(e)
+
+@app.put("/update_user/{user_id}")
+async def update_user(user_id: str, request: Request, db: Session=Depends(get_db)):
+    print("hidfdjbndjvnbjd")
+    try:
+        data = await request.json()
+        print(data)
+        # Fetch item by ID
+        user = db.query(Authentication).filter(Authentication.user_id == user_id).first()
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+
+        # Update fields
+        user.user_name = data.get("uName", user.user_name)
+        user.email = data.get("uEmail", user.email)
+        user.password = data.get("uPwd", user.password)
+        user.role = data.get("uRole", user.role)
+
+        db.commit()
+        db.close()
+        return {"msg": "User updated successfully"}
+
+    except Exception as e:
+        print(e)
+        raise HTTPException(status_code=500, detail="Internal Server Error")
+
+@app.delete("/delete_user/{user_id}")
+async def delete_user(user_id: str, db: Session=Depends(get_db)):
+    user = db.query(Authentication).filter(Authentication.user_id == user_id).first()
+    print(user.user_name)
+    if not user:
+        raise HTTPException(status_code=404, detail="user not found")
+    db.delete(user)
+    db.commit()
+    return {"msg": "User deleted"}
+
+
+# -------------------- Inventory -----------------------------------
+@app.get("/view_inventory")
+@redis_cache(ttl=10)  
+async def view_inventory(request: Request, db: Session = Depends(get_db)):
+    try:
+        result = []
+        view_items = db.query(InventoryItems).all()
+        # return {"id": view_item.item_id, "item_name":view_item.item_name,}
+        for view_item in view_items:
+            result.append({
+                "id": view_item.item_id, 
+                "item_name":view_item.item_name, 
+                "category": view_item.category, 
+                "description": view_item.description, 
+                "quantity": view_item.quantity, 
+                "unit_price": view_item.unit_price, 
+                "supplier": view_item.supplier, 
+                "location": view_item.location, 
+                "min_stock": view_item.min_stock, 
+                "unit": view_item.unit, 
+                "created_at": view_item.created_at.isoformat() if view_item.created_at else None,
+                "updated_at": view_item.updated_at.isoformat() if view_item.updated_at else None,
+            })
+        return result
+
+    except Exception as e:
+        print(e)
+
 
 @app.post("/create_new_item")
 async def add_stock(request: Request, db: Session = Depends(get_db)):
@@ -103,7 +190,7 @@ async def add_stock(request: Request, db: Session = Depends(get_db)):
             min_stock=data["minStock"],
             unit=data["unit"],
             created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
         ))
         db.commit()
         db.close()
@@ -122,7 +209,7 @@ async def update_value(item_id: str, request: Request, db: Session = Depends(get
             raise HTTPException(status_code=404, detail="Item not found")
 
         # Update fields
-        item.quantity = data.get("quantity", item.quantity)
+        item.quantity = item.quantity + data.get("quantity", item.quantity)
         item.unit_price = data.get("unitPrice", item.unit_price)
         item.supplier = data.get("supplier", item.supplier)
         item.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -144,6 +231,7 @@ async def delete_item(item_id: str, db: Session = Depends(get_db)):
     db.commit()
     return {"msg": "Item deleted"}
 
+# -------------------- Options -------------------------------------
 @app.get("/options/{oType}")
 async def view_options(oType: str, db: Session = Depends(get_db)):
     try:
@@ -175,7 +263,7 @@ async def add_options(oType: str, request: Request, db: Session = Depends(get_db
             db.add(ComboBoxOptions(
                 location = data["value"]
             ))
-        elif(oType == "location"):
+        elif(oType == "supplier"):
             db.add(ComboBoxOptions(
                 supplier = data["value"]
             ))
@@ -204,6 +292,7 @@ async def view_itemOrEmpl(itemOrEmpl: str, db: Session = Depends(get_db)):
         print("Error in view_itemOrEmpl:", e)
         raise HTTPException(status_code=400, detail="Invalid column name")
 
+# -------------------- Issue stock ---------------------------------
 @app.post("/issue_stock")
 async def issue_stock(request: Request, db: Session=Depends(get_db)):
     try:
@@ -235,34 +324,25 @@ async def issue_stock(request: Request, db: Session=Depends(get_db)):
 
 
 # ----------------------------------------------Helper function--------------------------------------------
-def generate_next_id(creation_type, db:Session):
+def generate_next_id(creation_type: str, db: Session) -> str:
     if creation_type == "new_item":
-        latest_item = (db.query(InventoryItems).order_by(InventoryItems.index.desc()).first())
-
-        if not latest_item:
-            return "SKU0001"
-        
-        last_num = int(latest_item.item_id[3:])
-        next_num = last_num + 1
-        return f"SKU{next_num:04d}"
+        latest = db.query(InventoryItems).order_by(InventoryItems.index.desc()).first()
+        prefix = "SKU"
+        field  = "item_id"
     elif creation_type == "new_user":
-        latest_user = (db.query(Authentication).order_by(Authentication.index.desc()).first())
+        latest = db.query(Authentication).order_by(Authentication.index.desc()).first()
+        prefix = "E"
+        field  = "user_id"
+    else:                       # new_trans
+        latest = db.query(TransactionsLogs).order_by(TransactionsLogs.index.desc()).first()
+        prefix = "TL"
+        field  = "transaction_id"
 
-        if not latest_user:
-            return "E0001"
-        
-        last_num = int(latest_user.user_id[3:])
-        next_num = last_num + 1
-        return f"E{next_num:04d}"
-    elif creation_type == "new_trans":
-        latest_trans = (db.query(TransactionsLogs).order_by(TransactionsLogs.index.desc()).first())
+    if not latest:
+        return f"{prefix}0001"
 
-        if not latest_trans:
-            return "TL0001"
-        
-        last_num = int(latest_trans.transaction_id[3:])
-        next_num = last_num + 1
-        return f"TL{next_num:04d}"
+    last_num = int(getattr(latest, field)[len(prefix):])
+    return f"{prefix}{last_num + 1:04d}"
 
 if __name__ == "__main__":
     uvicorn.run(app, host="0.0.0.0", port=5000)

@@ -9,7 +9,7 @@ import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-SERVER_URL = "http://13.200.108.197:5000"
+SERVER_URL = "http://192.168.0.17:5000"
 
 class ComboBoxLoader(QThread):
     loaded = pyqtSignal(list)
@@ -30,9 +30,11 @@ class ComboBoxLoader(QThread):
 
 
 class IssueStocksWindow(QDialog):
-    def __init__(self, on_issue=None):
+    def __init__(self, item_id, itemName, on_issue=None):
         super().__init__()
         self.loaders = []
+        self.item_id = item_id
+        self.itemName = itemName
         self.on_issue = on_issue
         self.setWindowTitle("Inventory Management")
         self.setMinimumSize(700, 700)
@@ -47,7 +49,7 @@ class IssueStocksWindow(QDialog):
         form_layout.setSpacing(20)
         form_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        self.itemname_input = self.create_combobox_row(form_layout, "Item Name:")
+        self.itemname_input = self.create_input_row(form_layout, "Item Name:")
         self.quantity_input = self.create_input_row(form_layout, "Quantity:")
         self.issuedby_input = self.create_combobox_row(form_layout, "Issued By:")
         self.issuedto_input = self.create_combobox_row(form_layout, "Issued To:")
@@ -87,8 +89,12 @@ class IssueStocksWindow(QDialog):
         label = QLabel(label_text)
         label.setFixedWidth(120)
         label.setStyleSheet("font-size: 18px")
-
+            
         input_field = QLineEdit()
+        if label_text == "Item Name:":
+            input_field.setText(self.itemName)
+        else:
+            input_field.setPlaceholderText("Enter quantity to assign")
         input_field.setFixedSize(300, 40)
         input_field.setStyleSheet("QLineEdit { background-color: white; border: 2px solid gray; border-radius: 14px; padding: 0 8px; }")
         input_field.setPlaceholderText("Enter quantity")
@@ -163,7 +169,7 @@ class IssueStocksWindow(QDialog):
         response = requests.post(
             f"{SERVER_URL}/issue_stock",
             json={
-                "itemName": self.itemname_input.currentText(),
+                "itemName": self.itemname_input.text(),
                 "quantity": int(self.quantity_input.text()),
                 "issued_by": self.issuedby_input.currentText(),
                 "issued_to": self.issuedto_input.currentText(),

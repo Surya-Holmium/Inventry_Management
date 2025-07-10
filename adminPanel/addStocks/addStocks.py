@@ -9,7 +9,7 @@ import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-SERVER_URL = "http://13.200.108.197:5000"
+SERVER_URL = "http://192.168.0.17:5000"
 
 class ComboBoxLoader(QThread):
     loaded = pyqtSignal(list)
