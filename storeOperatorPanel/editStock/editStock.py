@@ -8,7 +8,7 @@ import os
 import requests
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-SERVER_URL = "http://192.168.29.179:5000"
+SERVER_URL = "http://192.168.0.23:5000"
 
 class EditStockWindow(QDialog):
     def __init__(self, item_id, itemName, unit_price, supplier, on_update):
@@ -130,9 +130,10 @@ class EditStockWindow(QDialog):
         msg_box.exec()
 
     def send_updated_item_value(self):
-        response = requests.put(
-            f"{SERVER_URL}/update_value/{self.item_id}",
+        response = requests.post(
+            f"{SERVER_URL}/raise_request/{"stock_in"}",
             json={
+                "itemName": self.itemname_input.text(),
                 "quantity": int(self.quantity_input.text()),
                 "unitPrice": float(self.unitprice_input.text()),
                 "supplier": self.supplier_input.text(),

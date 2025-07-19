@@ -9,7 +9,7 @@ import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-SERVER_URL = "http://192.168.29.179:5000"
+SERVER_URL = "http://192.168.0.23:5000"
 
 class ComboBoxLoader(QThread):
     loaded = pyqtSignal(list)
@@ -168,7 +168,7 @@ class IssueStocksWindow(QDialog):
 
     def send_items_value(self):
         response = requests.post(
-            f"{SERVER_URL}/issue_stock/{"Admin"}",
+            f"{SERVER_URL}/raise_request/{"stock_out"}",
             json={
                 "itemName": self.itemname_input.text(),
                 "quantity": int(self.quantity_input.text()),

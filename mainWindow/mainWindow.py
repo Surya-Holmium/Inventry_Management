@@ -6,7 +6,6 @@ from PyQt6.QtCore import Qt
 import sys
 import os
 import requests
-from concurrent.futures import ThreadPoolExecutor
 import functools
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
@@ -15,8 +14,7 @@ from managerPanel import ManagerPanelWindow
 from storeOperatorPanel import StoreOperatorPanelWindow
 from viewerPanel import ViewerPanelWindow
 
-SERVER_URL = "http://13.200.108.197:5000"
-executor = ThreadPoolExecutor()
+SERVER_URL = "http://192.168.0.23:5000"
 
 class LoginWindow(QMainWindow):
     def __init__(self):
@@ -156,13 +154,13 @@ class LoginWindow(QMainWindow):
 
     def switch_window(self, role = None):
         if role == "Admin":
-            window = AdminPanelWindow()
+            window = AdminPanelWindow(self.username_input.text())
         elif(role == "Manager"):
-            window = ManagerPanelWindow()
+            window = ManagerPanelWindow(self.username_input.text())
         elif(role == "Store Operator"):
-            window = StoreOperatorPanelWindow()
+            window = StoreOperatorPanelWindow(self.username_input.text())
         else:
-            window = ViewerPanelWindow()
+            window = ViewerPanelWindow(self.username_input.text())
         window.setStyleSheet("background-color: #add8e6;")
         window.showMaximized()
         self.close()

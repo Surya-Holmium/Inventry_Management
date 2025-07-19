@@ -9,10 +9,10 @@ import requests
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
-SERVER_URL = "http://192.168.0.17:5000"
+SERVER_URL = "http://192.168.29.179:5000"
 
 class ComboBoxLoader(QThread):
-    loaded = pyqtSignal(list)
+    loaded = pyqtSignal(object)
 
     def __init__(self, oType):
         super().__init__()
@@ -270,6 +270,7 @@ class AddStocksWindow(QDialog):
 
     # ----------------------------------------------Helper Function-------------------------------------
     def populate_combobox(self, combo, items):
+        self.isSubCat = False
         combo.clear()
         combo.setEnabled(True)
         combo.addItems(items if items else ["None Available"])

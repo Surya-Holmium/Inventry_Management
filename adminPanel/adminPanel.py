@@ -12,12 +12,14 @@ from .manageUsers import ManageUsersWindow
 from .addStocks import AddStocksWindow
 from .editStock import EditStockWindow
 from .issueStocks import IssueStocksWindow
+from .manageRequests import ManageStockInRequestsWindow, ManageIssuedRequestsWindow
 # from 
-SERVER_URL = "http://192.168.0.17:5000"
+SERVER_URL = "http://192.168.0.23:5000"
 
 class AdminPanelWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, uName):
         super().__init__()
+        self.userName = uName
         self.setWindowTitle("Inventory Management - Admin Panel")
         self.setMinimumSize(900, 700)
 
@@ -44,10 +46,15 @@ class AdminPanelWindow(QMainWindow):
         self.issue_stock.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
         self.issue_stock.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
-        self.manage_request = QAction("Manage Request", self)
+        self.manage_request = QAction("StockIn Request", self)
         self.manage_request.triggered.connect(self.manage_request_dialog)
         self.manage_request.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
         self.manage_request.hovered.connect(lambda: QApplication.restoreOverrideCursor())
+
+        self.issued_request = QAction("Issued Request", self)
+        self.issued_request.triggered.connect(self.issued_request_dialog)
+        self.issued_request.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
+        self.issued_request.hovered.connect(lambda: QApplication.restoreOverrideCursor())
 
         self.export_report = QAction("Export Report", self)
         self.export_report.triggered.connect(self.download_report)
@@ -58,6 +65,11 @@ class AdminPanelWindow(QMainWindow):
         self.view_logs.triggered.connect(self.view_logs_as_table)
         self.view_logs.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
         self.view_logs.hovered.connect(lambda: QApplication.restoreOverrideCursor())
+
+        self.logout_button = QAction("Logout", self)
+        self.logout_button.triggered.connect(self.logout)
+        self.logout_button.hovered.connect(lambda: self.setCursor(Qt.CursorShape.PointingHandCursor))
+        self.logout_button.hovered.connect(lambda: QApplication.restoreOverrideCursor())
         
 
         #Creating toolbar and adding toolbar elements
@@ -72,8 +84,10 @@ class AdminPanelWindow(QMainWindow):
                                 self.add_stocks, 
                                 self.manage_users, 
                                 self.manage_request,
+                                self.issued_request,
                                 self.export_report,
                                 self.view_logs, 
+                                self.logout_button
                             ])
         
         
@@ -86,7 +100,7 @@ class AdminPanelWindow(QMainWindow):
         addStocks = AddStocksWindow(self.view_inventory_as_table)
         addStocks.setStyleSheet("background-color: #add8e6;")
         addStocks.exec()
-        
+            
     def edit_stock_dialog(self):
         index = self.table.currentRow()
         item_id = self.table.item(index, 1).text()
@@ -106,7 +120,7 @@ class AdminPanelWindow(QMainWindow):
 
     def view_inventory_as_table(self):
         data = requests.get(f"{SERVER_URL}/view_inventory").json()
-
+        print(data)
         headers = ["S. No.", "Item_ID", "Item_Name", "Category", "Description", "Quantity",
                    "Unit_price", "Supplier", "Location", "Min_Stock", "Unit",
                    "Created_At", "Updated_At"]
@@ -116,6 +130,7 @@ class AdminPanelWindow(QMainWindow):
 
         # ───────── table ─────────
         table = QTableWidget(len(data), len(headers))
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         table.setHorizontalHeaderLabels(headers)
         table.verticalHeader().setVisible(False)
         table.setStyleSheet("""
@@ -144,7 +159,7 @@ class AdminPanelWindow(QMainWindow):
         search_input.setFixedSize(300, 40)
         search_input.setStyleSheet("QLineEdit { background-color: white; border: 2px solid gray; border-radius: 14px; padding: 0 8px; }")
         search_input.setPlaceholderText("Item, category, supplier …")
-        search_btn   = QPushButton("Search")
+        search_btn = QPushButton("Search")
         search_btn.setStyleSheet("""
             QPushButton {
                 background-color: white;
@@ -193,20 +208,35 @@ class AdminPanelWindow(QMainWindow):
         index = self.table.currentRow()
         item_id = self.table.item(index, 1).text()
         itemName = self.table.item(index, 2).text()
-        issueStocks = IssueStocksWindow(item_id, itemName, self.view_inventory_as_table)
+        issueStocks = IssueStocksWindow(self.userName, item_id, itemName, self.view_inventory_as_table)
         issueStocks.setStyleSheet("background-color: #add8e6;")
         issueStocks.exec()
         
     def manage_request_dialog(self):
-        pass
+        manageStockInRequests = ManageStockInRequestsWindow()
+        manageStockInRequests.setStyleSheet("background-color: #add8e6;")
+        manageStockInRequests.exec()
+
+    def issued_request_dialog(self):
+        manageIssuedRequests = ManageIssuedRequestsWindow()
+        manageIssuedRequests.setStyleSheet("background-color: #add8e6;")
+        manageIssuedRequests.exec()
+
     def download_report(self):
         pass
     def view_logs_as_table(self):
         pass
 
-    def getCellValue(self):
-        # Create actions
+    def logout(self):
+        from mainWindow import LoginWindow
+        response = requests.post(f"{SERVER_URL}/logout/{self.userName}", json={"msg": True})
+        if response.ok:
+            self.logoutUsers = LoginWindow()
+            self.logoutUsers.setStyleSheet("background-color: #add8e6;")
+            self.logoutUsers.showMaximized()
+            self.close()
 
+    def getCellValue(self):
         self.issue_stock = QPushButton("Stock Out", self)
 
         self.issue_stock.clicked.connect(self.issue_stock_dialog)

@@ -11,7 +11,7 @@ import uvicorn
 import redis.asyncio as redis
 from passlib.context import CryptContext
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from backend import get_db, Authentication, InventoryItems, ComboBoxOptions, TransactionsLogs
+from backend import get_db, Authentication, InventoryItems, Category, TransactionsLogs, Location, Supplier, Unit, TempHandleEditStock
 
 load_dotenv()
 
@@ -58,11 +58,30 @@ async def handle_login(request: Request, db: Session = Depends(get_db)):
         password = data["pass"]
         cred_db = db.query(Authentication).filter(Authentication.user_name == username).first()
         if cred_db.user_name == username and pwd_context.verify(password, cred_db.password):
-            return {"role": cred_db.role}
+            if cred_db.status == "Inactive":
+                cred_db.status = "Active"
+            db.commit()
+            if cred_db.status == "Active":
+                return {"role": cred_db.role}
         else:
             return HTTPException(status_code=404, detail="User not found")
     except AttributeError as e:
         print(e)
+
+@app.post("/logout/{userName}")
+async def logout_user(userName: str, request: Request, db: Session=Depends(get_db)):
+    try:
+        data = await request.json()
+        if data["msg"]:
+            view_user = db.query(Authentication).filter(Authentication.user_name == userName).first()
+            if view_user.status == "Active":
+                view_user.status = "Inactive"
+        db.commit()
+        if view_user.status == "Inactive":
+            return {"msg": True}
+    except Exception as e:
+        print("Error in logout_users:", e)
+        raise HTTPException(status_code=400, detail="Invalid user name")
 
 # -------------------- Users ---------------------------------------
 @app.get("/view_user")
@@ -70,7 +89,7 @@ async def handle_login(request: Request, db: Session = Depends(get_db)):
 async def view_users(request: Request, db: Session = Depends(get_db)):
     try:
         result = []
-        view_users = db.query(Authentication).all()
+        view_users = db.query(Authentication).order_by(Authentication.user_id).all()
         for view_user in view_users:
             result.append({
                 "user_id": view_user.user_id,
@@ -80,7 +99,6 @@ async def view_users(request: Request, db: Session = Depends(get_db)):
                 "sts": view_user.status
             })
         return result
-
     except Exception as e:
         print(e)
 
@@ -88,7 +106,6 @@ async def view_users(request: Request, db: Session = Depends(get_db)):
 async def add_user(request: Request, db: Session = Depends(get_db)):
     try:
         data = await request.json()
-        # print(data)
         user_id = generate_next_id("new_user", db)
         db.add(Authentication(
             user_id = user_id,
@@ -96,10 +113,9 @@ async def add_user(request: Request, db: Session = Depends(get_db)):
             email= data["uEmail"],
             password=pwd_context.hash(data["uPwd"]),
             role= data["uRole"],
-            status= "Active"
+            status= "Inactive"
         ))
         db.commit()
-        db.close()
         checkDB = db.query(Authentication).filter(Authentication.user_name == data["uName"]).first()
         if checkDB:
             print(checkDB.user_name)
@@ -110,7 +126,6 @@ async def add_user(request: Request, db: Session = Depends(get_db)):
 
 @app.put("/update_user/{user_id}")
 async def update_user(user_id: str, request: Request, db: Session=Depends(get_db)):
-    print("hidfdjbndjvnbjd")
     try:
         data = await request.json()
         print(data)
@@ -150,8 +165,7 @@ async def delete_user(user_id: str, db: Session=Depends(get_db)):
 async def view_inventory(request: Request, db: Session = Depends(get_db)):
     try:
         result = []
-        view_items = db.query(InventoryItems).all()
-        # return {"id": view_item.item_id, "item_name":view_item.item_name,}
+        view_items = db.query(InventoryItems).order_by(InventoryItems.item_id).all()
         for view_item in view_items:
             result.append({
                 "id": view_item.item_id, 
@@ -190,7 +204,7 @@ async def add_stock(request: Request, db: Session = Depends(get_db)):
             min_stock=data["minStock"],
             unit=data["unit"],
             created_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            updated_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         ))
         db.commit()
         db.close()
@@ -235,16 +249,15 @@ async def delete_item(item_id: str, db: Session = Depends(get_db)):
 @app.get("/options/{oType}")
 async def view_options(oType: str, db: Session = Depends(get_db)):
     try:
-        # Validate column name to prevent SQL injection
-        valid_columns = [column.name for column in inspect(ComboBoxOptions).columns]
-        if oType not in valid_columns:
-            raise HTTPException(status_code=400, detail="Invalid column name")
-
-        # Efficiently query only that column
-        results = db.query(getattr(ComboBoxOptions, oType)).distinct().all()
-
-        # Flatten result list of tuples
-        return [value[0] for value in results if value[0] is not None]
+        if(oType == "category"):
+            results = db.query(Category).all()
+        elif(oType == "location"):
+            results = db.query(Location).all()
+        elif (oType == "supplier"):
+            results = db.query(Supplier).all()
+        else:
+            results = db.query(Unit).all()
+        return [value.name for value in results if value.name is not None]
 
     except Exception as e:
         print("Error in view_options:", e)
@@ -253,32 +266,53 @@ async def view_options(oType: str, db: Session = Depends(get_db)):
 @app.post("/options/{oType}")
 async def add_options(oType: str, request: Request, db: Session = Depends(get_db)):
     try:
-        print(oType)
         data = await request.json()
         if(oType == "category"):
-            db.add(ComboBoxOptions(
-                category = data["value"]
+            db.add(Category(
+                name = data["value"]
             ))
         elif(oType == "location"):
-            db.add(ComboBoxOptions(
-                location = data["value"]
+            db.add(Location(
+                name = data["value"]
             ))
         elif(oType == "supplier"):
-            db.add(ComboBoxOptions(
-                supplier = data["value"]
+            db.add(Supplier(
+                name = data["value"]
             ))
         else:
-            db.add(ComboBoxOptions(
-                unit = data["value"]
+            db.add(Unit(
+                name = data["value"]
             ))
         db.commit()
         db.close()
         return {"msg": "option added successfully"}
     except Exception as e:
         print("Error in add_options:", e)
-        return []
+        raise HTTPException(status_code=400, detail="Invalid column name")
+    
+# @app.get("/subcategory/{category}")
+# async def view_subcategory(category: str, db: Session = Depends(get_db)):
+#     try:
+#         category = db.query(Category).filter_by(name=category).first()
+#         if not category:
+#             raise HTTPException(status_code=404, detail="Category not found")
 
-@app.get("/{itemOrEmpl}")
+#         subcategories = db.query(Subcategory).filter_by(category_id=category.id).all()
+
+#         return [sub.name for sub in subcategories if sub.name]
+#     except Exception as e:
+#         print("Error in view_subcategory:", e)
+#         raise HTTPException(status_code=500, detail="Internal server error")
+
+# @app.post("/subcategory/{subCat}")
+# async def add_subcategory(subCat: str, request: Request, db: Session = Depends(get_db)):
+#     try:
+        
+#     except Exception as e:
+#         print("Error in view_subcategory:", e)
+#         raise HTTPException(status_code=500, detail="Internal server error")
+
+@app.get("/employee/{itemOrEmpl}")
 async def view_itemOrEmpl(itemOrEmpl: str, db: Session = Depends(get_db)):
     try:
         if itemOrEmpl == "item_name":
@@ -293,37 +327,151 @@ async def view_itemOrEmpl(itemOrEmpl: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Invalid column name")
 
 # -------------------- Issue stock ---------------------------------
-@app.post("/issue_stock")
-async def issue_stock(request: Request, db: Session=Depends(get_db)):
+@app.post("/issue_stock/{role}")
+async def issue_stock(role: str, request: Request, db: Session=Depends(get_db)):
     try:
         data = await request.json()
-        print(data)
-        trans_id = generate_next_id("new_trans", db)
-        is_item_name = db.query(InventoryItems).filter(InventoryItems.item_name == data["itemName"]).first()
-
-        if not is_item_name:
-            raise HTTPException(status_code=400, detail="Invalid column name")
-        
-        is_item_name.quantity = is_item_name.quantity - data.get("quantity", is_item_name.quantity)
-
-        db.add(TransactionsLogs(
-            transaction_id= trans_id,
-            item_id=is_item_name.item_id,
-            transaction_type="Issuance",
-            quantity=data["quantity"],
-            issued_by=data["issued_by"],
-            issued_to=data["issued_to"],
-            issued_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ))
-
-        db.commit()
-        db.close()
+        issued_stock_through(data, db, role)
     except Exception as e:
         print("Error in issue_stock:", e)
         raise HTTPException(status_code=400, detail="Invalid column name")
 
+# ---------------------------------------------Raise and Manage Request------------------------------------
+@app.get("/requests/{stockIn_stockOut}")
+@redis_cache(ttl=10)  
+async def view_requests(stockIn_stockOut:str, request: Request, db: Session = Depends(get_db)):
+    try:
+        result = []
+        if stockIn_stockOut == "stock_in":
+            results = db.query(TempHandleEditStock).filter(TempHandleEditStock.status == "Pending").all()
+            for value in results:
+                result.append({
+                    "itemName": value.itemname, 
+                    "quantity":value.quantity, 
+                    "uPrice": value.unit_price, 
+                    "supplier": value.supplier,
+                    "sts": value.status
+                })
+        else:
+            results = db.query(TransactionsLogs).filter(TransactionsLogs.status == "Pending").all()
+            for value in results:
+                itemName = db.query(InventoryItems).filter(InventoryItems.item_id == value.item_id).first().item_name
+                result.append({
+                    "tran_id": value.transaction_id,
+                    "item_id": value.item_id,
+                    "itemName": itemName,
+                    "quantity": value.quantity,
+                    "issued_by": value.issued_by,
+                    "issued_to": value.issued_to,
+                    "issued_at": value.issued_at.isoformat() if value.issued_at else None,
+                    "sts": value.status
+                })
+        return result
+    except Exception as e:
+        print("Error in view_request:", e)
+        raise HTTPException(status_code=400, detail="Requests not founud")
+    
+@app.post("/accept_request/{stockIn_stockOut}")
+async def accept_request(stockIn_stockOut: str, request: Request, db: Session = Depends(get_db)):
+    try:
+        data = await request.json()
+        if stockIn_stockOut == "stock_in":
+            if data:
+                view_item = db.query(InventoryItems).filter(InventoryItems.item_name == data["itemName"]).first()
+                view_item.quantity = view_item.quantity + data.get("quantity", view_item.quantity)
+                if data["unitPrice"] is not None:
+                    view_item.unit_price = data.get("unitPrice", view_item.unit_price)
+
+                if data["supplier"] != "":
+                    view_item.supplier = data.get("supplier", view_item.supplier)
+                view_item.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                result = db.query(TempHandleEditStock).filter(TempHandleEditStock.status == "Pending").first()
+                result.status = "Approved"
+            db.commit()
+            db.close()
+            return {"msg": "Stock in request updated successfully!"}
+        else:
+            if data:
+                view_item = db.query(InventoryItems).filter(InventoryItems.item_id == data["item_id"]).first()
+                view_item.quantity = view_item.quantity - data.get("quantity", view_item.quantity)
+                view_item.updated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                result = db.query(TransactionsLogs).filter(TransactionsLogs.status == "Pending").first()
+                result.status = "Approved"
+            db.commit()
+            db.close()
+            return {"msg": "Stock out request updated successfully!"}
+    except Exception as e:
+        print("Error in view_request:", e)
+        raise HTTPException(status_code=400, detail="Requests not founud")
+    
+@app.delete("/reject_request/{stockIn_stockOut}/{itemName}")
+async def reject_request(stockIn_stockOut: str, itemName: str, db: Session = Depends(get_db)):
+    try:
+        if stockIn_stockOut == "stock_in":
+            result = db.query(TempHandleEditStock).filter(TempHandleEditStock.itemname == itemName).first()
+            if not result:
+                raise HTTPException(status_code=404, detail="Item not found")
+            db.delete(result)    
+            db.commit()
+            db.close()
+            return {"msg": "Request rejected successfully!"}
+        else:
+            itemID = db.query(InventoryItems).filter(InventoryItems.item_name == itemName).first().item_id
+            result = db.query(TransactionsLogs).filter(TransactionsLogs.item_id == itemID).first()
+            if not result:
+                raise HTTPException(status_code=404, detail="Item not found")
+            db.delete(result)    
+            db.commit()
+            db.close()
+            return {"msg": "Request rejected successfully!"}
+                
+    except Exception as e:
+        print("Error in reject_request:", e)
+        raise HTTPException(status_code=400, detail="Requests not founud")
+
+@app.post("/raise_request/{stockIn_stockOut}")
+async def raise_request(stockIn_stockOut: str, request: Request, db: Session=Depends(get_db)):
+    try:
+        data = await request.json()
+        if stockIn_stockOut == "stock_in":
+            view_item = db.query(InventoryItems).filter(InventoryItems.item_name == data["itemName"]).first()
+            db.add(TempHandleEditStock(
+                itemname=data["itemName"],
+                quantity=data["quantity"],
+                unit_price=data["unitPrice"] if view_item.unit_price != data["unitPrice"] else None,
+                supplier=data["supplier"] if view_item.supplier != data["supplier"] else None,
+                status="Pending"
+            ))
+            db.commit()
+            db.close()
+        else:
+            issued_stock_through(data, db, "Store Operator")
+    except Exception as e:
+        print("Error in raise_request:", e)
+        raise HTTPException(status_code=400, detail="Item not founud")
 
 # ----------------------------------------------Helper function--------------------------------------------
+def issued_stock_through(data, db:Session, role):
+    trans_id = generate_next_id("new_trans", db)
+    is_item_name = db.query(InventoryItems).filter(InventoryItems.item_name == data["itemName"]).first()
+
+    if not is_item_name:
+        raise HTTPException(status_code=400, detail="Invalid column name")
+
+    db.add(TransactionsLogs(
+        transaction_id= trans_id,
+        item_id=is_item_name.item_id,
+        transaction_type="Issuance",
+        quantity=data["quantity"],
+        issued_by=data["issued_by"],
+        issued_to=data["issued_to"],
+        issued_at=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        status="Approved" if (role == "Admin" or role == "Manager") else "Pending"
+    ))
+
+    db.commit()
+    db.close()
+
 def generate_next_id(creation_type: str, db: Session) -> str:
     if creation_type == "new_item":
         latest = db.query(InventoryItems).order_by(InventoryItems.index.desc()).first()

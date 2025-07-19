@@ -45,49 +45,81 @@ class ViewerPanelWindow(QMainWindow):
                             ])
         
     def view_inventory_as_table(self):
-        response = requests.get(f"{SERVER_URL}/view_in")
-        data = response.json()
+        data = requests.get(f"{SERVER_URL}/view_inventory").json()
+        headers = ["S. No.", "Item_ID", "Item_Name", "Category", "Description", "Quantity",
+                   "Unit_price", "Supplier", "Location", "Min_Stock", "Unit",
+                   "Created_At", "Updated_At"]
+        keys = ["id", "item_name", "category", "description", "quantity",
+                "unit_price", "supplier", "location", "min_stock", "unit",
+                "created_at", "updated_at"]
 
-        # Custom display headers
-        display_headers = [
-            "Item_ID", "Item_Name", "Category", "Description", "Quantity",
-            "Unit_price", "Supplier", "Location", "Min_Stock", "Unit",
-            "Created_At", "Updated_At"
-        ]
+        # ───────── table ─────────
+        table = QTableWidget(len(data), len(headers))
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setHorizontalHeaderLabels(headers)
+        table.verticalHeader().setVisible(False)
+        table.setStyleSheet("""
+            QTableWidget       { font-size:15px; background:white; }
+            QHeaderView::section{ background:#E0E0E0; font-size:16px; font-weight:bold; padding:6px; }
+        """)
+        table.resizeColumnsToContents()
+        for c in range(table.columnCount()):
+            table.setColumnWidth(c, table.columnWidth(c) + 50)
 
-        # Corresponding JSON keys
-        data_keys = [
-            "id", "item_name", "category", "description", "quantity",
-            "unit_price", "supplier", "location", "min_stock", "unit",
-            "created_at", "updated_at"
-        ]
+        for r, row in enumerate(data):
+            table.setRowHeight(r, 40)
+            table.setItem(r, 0, QTableWidgetItem(str(r + 1)))
+            for c, k in enumerate(keys, start=1):
+                table.setItem(r, c, QTableWidgetItem(str(row.get(k, ""))))
+            if row["quantity"] <= 10:
+                self.show_warning(f"{row['item_name']} stock is low. Please restock.")
 
-        self.table = QTableWidget()
-        self.table.setColumnCount(len(display_headers))
-        self.table.setHorizontalHeaderLabels(display_headers)
-        self.table.setStyleSheet('font-size: 14px; background-color: white')
-        # self.table.setFixedSize(1000, 600)
-        self.table.setRowCount(len(data))
-        self.table.verticalHeader().setVisible(False)
-        # self.table.setAutoScroll(True).
-        self.setCentralWidget(self.table)
+        # ───────── search bar ─────────
+        search_lbl   = QLabel("Search:")
+        search_lbl.setStyleSheet("font-size: 20px")
+        search_input = QLineEdit()
+        search_input.setFixedSize(300, 40)
+        search_input.setStyleSheet("QLineEdit { background-color: white; border: 2px solid gray; border-radius: 14px; padding: 0 8px; }")
+        search_input.setPlaceholderText("Item, category, supplier …")
+        search_btn = QPushButton("Search")
+        search_btn.setStyleSheet("""
+            QPushButton {
+                background-color: white;
+                border: None;
+                border-radius: 15px;
+                padding: 8px 16px;
+                font-size: 16px;
+            }
+            QPushButton:hover {
+                background-color: #A6F1F4;
+            }
+        """)
 
-        #Detecting a cell click
-        # self.table.cellClicked.connect(self.getCellValue)
+        def filter_table():
+            q = search_input.text().lower().strip()
+            for row in range(table.rowCount()):
+                visible = any(q in (table.item(row, col).text().lower())
+                              for col in range(1, table.columnCount())) if q else True
+                table.setRowHidden(row, not visible)
 
-        for row_index, row_data in enumerate(data):
-            for col_index, key in enumerate(data_keys):
-                value = row_data.get(key, "")
-                display_value = "" if value is None else str(value)
-                self.table.setItem(row_index, col_index, QTableWidgetItem(display_value))
+        search_btn.clicked.connect(filter_table)
+        search_input.returnPressed.connect(filter_table)
+        search_input.textChanged.connect(filter_table)
+
+        self.search_row = QHBoxLayout()
+        for w in (search_lbl, search_input, search_btn):
+            self.search_row.addWidget(w)
+        self.search_row.addStretch()
+
+        # ───────── assemble widget ─────────
+        wrap = QWidget(); layout = QVBoxLayout(wrap)
+        layout.setContentsMargins(50, 30, 50, 20)
+        layout.addLayout(self.search_row)
+        layout.addWidget(table)
+
+        self.setCentralWidget(wrap)
 
 
-    # def issue_stock_dialog(self):
-    #     pass
-    # def manage_request_dialog(self):
-    #     pass
-    # def download_report(self):
-    #     pass
     def view_logs_as_table(self):
         pass
 
